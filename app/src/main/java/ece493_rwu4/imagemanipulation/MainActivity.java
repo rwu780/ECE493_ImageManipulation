@@ -18,7 +18,6 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.text.InputType;
 import android.util.Log;
-import android.util.LruCache;
 import android.view.GestureDetector;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -53,8 +52,11 @@ public class MainActivity extends AppCompatActivity
 
     private int maxNumberOfKeys = 10;
     private int numberOfKeys = 5;
-    private List<Integer> keys;
-    private LruCache<Integer, Bitmap> mMemoryCache;
+
+
+    private static final String TAG = "Main";
+
+    List<int[]> bitmapList;
 
     File photoFile;
 
@@ -74,17 +76,11 @@ public class MainActivity extends AppCompatActivity
         final int maxMemory = (int) (Runtime.getRuntime().maxMemory() / 1024);
         final int cacheSize = maxMemory / 8;
 
-        mMemoryCache = new LruCache<Integer, Bitmap>(cacheSize){
-            protected int sizeOf(Integer key, Bitmap bitmap){
-                return bitmap.getByteCount() / 1024;
-            }
-        };
-
         //Load Gestures
         mDetector = new GestureDetectorCompat(this, new MyGestureListener());
-        keys = new ArrayList<Integer>();
         imgUtil = new ImageUtility();
         imageView = (ImageView) findViewById(R.id.imageView);
+        bitmapList = new ArrayList<int[]>();
 
         //Load Photo Button
         Button loadImageButton = (Button) findViewById(R.id.loadImageButton);
@@ -121,22 +117,6 @@ public class MainActivity extends AppCompatActivity
             }
         });
 
-        //Undo Photo
-        Button undoPhotoButton = (Button) findViewById(R.id.undoButton);
-        undoPhotoButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if(keys.size() == 0){
-                    Toast.makeText(getBaseContext(), "No Previous Warp", Toast.LENGTH_LONG).show();
-                }else {
-                    int key = keys.size() - 1;
-                    bitMap = getBitmapFromMemCache(key);
-                    keys.remove(key);
-                    imageView.setImageBitmap(bitMap);
-                    Toast.makeText(getBaseContext(), "Yes", Toast.LENGTH_LONG).show();
-                }
-            }
-        });
     }
 
     public boolean onTouchEvent(MotionEvent event){
@@ -157,14 +137,28 @@ public class MainActivity extends AppCompatActivity
         switch (item.getItemId()){
             case R.id.preference:
                 setPreference();
-                Log.d("Main", "Preference: " + numberOfKeys);
-
+                Log.d(TAG, "Preference: " + numberOfKeys);
+                return true;
+            case R.id.undoItem:
+                undo();
                 return true;
             default:
                 return super.onOptionsItemSelected(item);
         }
     }
 
+    public void addBitmap(Bitmap bmap){
+        int[] store = new int[bmap.getByteCount()];
+        bmap.getPixels(store, 0, bmap.getWidth(), 0, 0, bmap.getWidth(), bmap.getHeight());
+
+        bitmapList.add(store);
+    }
+    public void undo(){
+        int[] res = bitmapList.get(bitmapList.size() - 1);
+        bitMap.setPixels(res, 0, bitMap.getWidth(), 0, 0, bitMap.getWidth(), bitMap.getHeight());
+        bitmapList.remove(bitmapList.size() - 1);
+        imageView.setImageBitmap(bitMap);
+    }
     public void setPreference(){
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
 
@@ -191,25 +185,6 @@ public class MainActivity extends AppCompatActivity
         builder.create().show();
 
     }
-
-    public void addBitmapToMemoryCache(Bitmap bitmap){
-        int key = keys.size();
-        if(getBitmapFromMemCache(key) == null){
-            mMemoryCache.put(key, bitmap);
-            keys.add(key);
-        }
-
-        if(keys.size() > numberOfKeys){
-            keys.remove(0);
-            mMemoryCache.remove(0);
-        }
-
-    }
-
-    public Bitmap getBitmapFromMemCache(Integer key){
-        return mMemoryCache.get(key);
-    }
-
 
     //Reference: https://developer.android.com/training/camera/photobasics.html
     private void dispatchTakePictureIntent(){
@@ -252,6 +227,7 @@ public class MainActivity extends AppCompatActivity
             int width = imageView.getWidth();
             int height = imageView.getHeight();
             bitMap = Bitmap.createScaledBitmap(bitMap, width, height, false);
+            addBitmap(bitMap);
             imageView.setImageBitmap(bitMap);
         }
     }
@@ -274,14 +250,28 @@ public class MainActivity extends AppCompatActivity
     //Gesture Listener
     class MyGestureListener extends GestureDetector.SimpleOnGestureListener{
         private static final String DEBUT_TAG = "Gestures";
+
         ImageWarp imageWarp;
 
         public void onLongPress(MotionEvent event){
             //Implement Blur
+            addBitmap(bitMap);
             Log.d(DEBUT_TAG, "onLongPress:" + event.toString());
-            addBitmapToMemoryCache(bitMap);
-            imageWarp = new ImageWarp(bitMap);
-            bitMap = imageWarp.blur();
+            Thread thread = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    imageWarp = new ImageWarp(bitMap);
+                    bitMap = imageWarp.blur();
+                }
+            });
+            thread.start();
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+//            imageWarp = new ImageWarp(bitMap);
+//            bitMap = imageWarp.blur();
             imageView.setImageBitmap(bitMap);
             imageWarp = null;
         }
@@ -289,8 +279,22 @@ public class MainActivity extends AppCompatActivity
         public boolean onDoubleTap(MotionEvent event){
             //Implement Ripple
             Log.d(DEBUT_TAG, "onDoubleTap:"+event.toString());
-            imageWarp = new ImageWarp(bitMap);
-            bitMap = imageWarp.ripple();
+            addBitmap(bitMap);
+            Thread thread = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    imageWarp = new ImageWarp(bitMap);
+                    bitMap = imageWarp.ripple();
+                }
+            });
+            thread.start();
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+//            imageWarp = new ImageWarp(bitMap);
+//            bitMap = imageWarp.ripple();
             imageView.setImageBitmap(bitMap);
             imageWarp = null;
             return true;
@@ -298,9 +302,24 @@ public class MainActivity extends AppCompatActivity
 
         public boolean onSingleTapUp(MotionEvent event){
             //Implement Fish Eye
+            addBitmap(bitMap);
             Log.d(DEBUT_TAG, "onDoubleTap:"+event.toString());
-            imageWarp = new ImageWarp(bitMap);
-            bitMap = imageWarp.fisheye();
+//            addBitmapToMemoryCache(bitMap);
+            Thread thread = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    imageWarp = new ImageWarp(bitMap);
+                    bitMap = imageWarp.fisheye();
+                }
+            });
+            thread.start();
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+//            imageWarp = new ImageWarp(bitMap);
+//            bitMap = imageWarp.fisheye();
             imageView.setImageBitmap(bitMap);
             imageWarp = null;
             return true;
@@ -309,10 +328,24 @@ public class MainActivity extends AppCompatActivity
 
         public boolean onFling(MotionEvent event, MotionEvent event1, float v, float v1){
             //Implement Swirl
+            addBitmap(bitMap);
             Log.d(DEBUT_TAG, "onFling"+event.toString());
-            addBitmapToMemoryCache(bitMap);
-            imageWarp = new ImageWarp(bitMap);
-            bitMap = imageWarp.swirl();
+//            addBitmapToMemoryCache(bitMap);
+            Thread thread = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    imageWarp = new ImageWarp(bitMap);
+                    bitMap = imageWarp.swirl();
+                }
+            });
+            thread.start();
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+//            imageWarp = new ImageWarp(bitMap);
+//            bitMap = imageWarp.swirl();
             imageView.setImageBitmap(bitMap);
             imageWarp = null;
             return true;

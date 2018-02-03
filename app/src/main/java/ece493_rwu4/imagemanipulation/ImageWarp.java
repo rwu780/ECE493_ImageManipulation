@@ -239,7 +239,5 @@ public class ImageWarp {
         verts = null;
         original = null;
         return bitmap;
-
-
     }
 }
