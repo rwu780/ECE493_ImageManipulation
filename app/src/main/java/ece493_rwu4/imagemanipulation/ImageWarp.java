@@ -3,6 +3,7 @@ package ece493_rwu4.imagemanipulation;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.graphics.Matrix;
 
 import java.io.File;
@@ -33,7 +34,6 @@ public class ImageWarp {
         for(int x = 0; x < width; x ++){
             for (int y = 0; y < height; y++){
                 int color = 0;
-                int size = 0;
                 if(x - distance >= 0 && x + distance < width && y-distance >= 0 && y+distance < height){
                     color += original[y*width+x-distance];
                     color += original[y*width+x];
@@ -62,57 +62,54 @@ public class ImageWarp {
         return bitmap;
     }
 
-    public Bitmap fisheye(float cx, float cy){
+    public Bitmap fisheye(){
         verts = new int[bitmap.getByteCount()];
         original = new int[bitmap.getByteCount()];
         int width = bitmap.getWidth();
         int height = bitmap.getHeight();
 
         bitmap.getPixels(original, 0, width, 0, 0, width, height);
+        bitmap.getPixels(verts, 0, width, 0, 0, width, height);
 
-        double maxWidth = Math.pow(cx + width/2, 2);
-        double maxHeight = Math.pow(cy + width/2, 2);
-        double max_r = width/2;
+        double cx = 0;
+        double cy = 0;
+        //For each pixel
+        for (int y = 0; y<height; y++){
 
-        //for each pixel
-        for(int x = 0; x<width; x++){
-            for (int y = 0; y<height; y++){
-                double r = Math.sqrt(Math.pow(x - cx, 2) + Math.pow(y - cy, 2));
-                if(r < max_r){
-                    verts[y*width + x] = original[y* width + x];
+            for (int x = 0; x<width; x++){
+                //Normalize (x, y) to (nx, ny) to be in range [-1, 1]
+                double ny = 2 * (y-cx) / height - 1;
+                double nx = 2 * (x-cy) / height - 1;
+
+                //Calculate the distance from (nx, ny) to center(0, 0)
+                double r = Math.sqrt(nx*nx + ny*ny);
+
+
+                if (0 <= r && r <= 1){
+                    //Convert (nx, ny) to polar coordinate
+                    //Calculate the new distance from center on the sphere surface
+                    double nr = Math.sqrt(1.0 - r*r);
+
+                    nr = (r + (1.0 - nr))/2.0;
+
+                    if(nr <= 1.0){
+
+                        //Translate (nx, ny) back to cartesian coordinate
+                        double theta = Math.atan2(ny, nx);
+                        double nxn = nr * Math.cos(theta);
+                        double nyn = nr * Math.sin(theta);
+
+                        //Translate to screen position
+                        int x2 = (int) Math.floor((nxn + 1) * width / 2.0);
+                        int y2 = (int) Math.floor((nyn + 1) * height / 2.0);
+
+
+                        int srcpos = y2*width + x2;
+                        if(srcpos >= 0 && srcpos<width * height){
+                            verts[y*width + x] = original[srcpos];
+                        }
+                    }
                 }
-
-                //Calculate the distance from(nx, ny) to center (cx, cy)
-                //Convert (nx, ny) to polar coordinates
-//                double rx = nx - cx;
-//                double ry = ny - cy;
-//
-//                double rxx = Math.pow(rx, 2);
-//                double ryy = Math.pow(ry, 2);
-//                double r = Math.sqrt(rxx + ryy);
-//
-//                //pixels outside the sphere will remain the same
-//                if(r >= 0.0 && r <= 1.0){
-//                    double nr = r + (1 - Math.sqrt(r * r)) / 2;
-//
-//                    if (nr < 1.0){
-//                        double theta = Math.atan(ry / rx);
-//
-//                        double newX = nr * Math.cos(theta);
-//                        double newY = nr * Math.sin(theta);
-//
-//                        int x2 = (int) ((newX + 1)*width/2.0);
-//                        int y2 = (int) ((newY + 1) * height/2.0);
-//
-//                        int srcpos = (int) (y2 * width + x2);
-//                        if(srcpos >= 0 & srcpos < width * height){
-//                            verts[y*width + x] = original[srcpos];
-//                        }
-//
-//                    }
-//                }else{
-////                    verts[y*width + x] = original[y*width + x];
-//                }
             }
         }
 
@@ -207,5 +204,42 @@ public class ImageWarp {
         verts = null;
         original = null;
         return bitmap;
+    }
+
+    public Bitmap ripple(){
+        verts = new int[bitmap.getByteCount()];
+        original = new int[bitmap.getByteCount()];
+
+        bitmap.getPixels(original, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
+
+        int height = bitmap.getHeight();
+        int width = bitmap.getWidth();
+
+        for (int y = 0; y<height; y++){
+            for(int x = 0; x<width; x++){
+
+                double nx = x / 16;
+                double ny = y / 16;
+
+                double fx = Math.cos(nx);
+                double fy = Math.sin(ny);
+
+                int srcX = (int) (x + 10 * fx);
+                int srcY = (int) (y + 10 * fy);
+                verts[y*width + x] = original[srcY * width + srcX];
+            }
+        }
+
+        try {
+            bitmap.setPixels(verts, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
+        } catch (Exception e){
+            bitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true);
+            bitmap.setPixels(verts, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
+        }
+        verts = null;
+        original = null;
+        return bitmap;
+
+
     }
 }

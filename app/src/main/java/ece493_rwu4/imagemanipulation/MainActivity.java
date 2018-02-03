@@ -16,7 +16,9 @@ import android.support.v4.view.GestureDetectorCompat;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.text.InputType;
 import android.util.Log;
+import android.util.LruCache;
 import android.view.GestureDetector;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -24,11 +26,14 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.Toast;
 
 import java.io.File;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 import android.Manifest;
 
@@ -46,6 +51,11 @@ public class MainActivity extends AppCompatActivity
     ImageView imageView;
     Bitmap bitMap = null;
 
+    private int maxNumberOfKeys = 10;
+    private int numberOfKeys = 5;
+    private List<Integer> keys;
+    private LruCache<Integer, Bitmap> mMemoryCache;
+
     File photoFile;
 
     @Override
@@ -60,9 +70,19 @@ public class MainActivity extends AppCompatActivity
             }
         }
 
+        //Create Bitmap Cache
+        final int maxMemory = (int) (Runtime.getRuntime().maxMemory() / 1024);
+        final int cacheSize = maxMemory / 8;
+
+        mMemoryCache = new LruCache<Integer, Bitmap>(cacheSize){
+            protected int sizeOf(Integer key, Bitmap bitmap){
+                return bitmap.getByteCount() / 1024;
+            }
+        };
+
         //Load Gestures
         mDetector = new GestureDetectorCompat(this, new MyGestureListener());
-
+        keys = new ArrayList<Integer>();
         imgUtil = new ImageUtility();
         imageView = (ImageView) findViewById(R.id.imageView);
 
@@ -103,6 +123,20 @@ public class MainActivity extends AppCompatActivity
 
         //Undo Photo
         Button undoPhotoButton = (Button) findViewById(R.id.undoButton);
+        undoPhotoButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if(keys.size() == 0){
+                    Toast.makeText(getBaseContext(), "No Previous Warp", Toast.LENGTH_LONG).show();
+                }else {
+                    int key = keys.size() - 1;
+                    bitMap = getBitmapFromMemCache(key);
+                    keys.remove(key);
+                    imageView.setImageBitmap(bitMap);
+                    Toast.makeText(getBaseContext(), "Yes", Toast.LENGTH_LONG).show();
+                }
+            }
+        });
     }
 
     public boolean onTouchEvent(MotionEvent event){
@@ -121,19 +155,60 @@ public class MainActivity extends AppCompatActivity
     public boolean onOptionsItemSelected(MenuItem item){
 
         switch (item.getItemId()){
-            case R.id.blur:
-                ImageWarp imgWarp = new ImageWarp(bitMap);
-                bitMap = imgWarp.swirl();
-                imageView.setImageBitmap(bitMap);
-                return true;
             case R.id.preference:
-                Toast.makeText(this, "Preference", Toast.LENGTH_LONG);
+                setPreference();
+                Log.d("Main", "Preference: " + numberOfKeys);
+
                 return true;
             default:
                 return super.onOptionsItemSelected(item);
         }
     }
 
+    public void setPreference(){
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+
+        builder.setTitle("Set number of undos");
+        builder.setMessage("Maximum number of undos is 10");
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER);
+
+        builder.setView(input);
+
+        builder.setPositiveButton("OK", new DialogInterface.OnClickListener(){
+
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                int num = new Integer(input.getText().toString());
+                if(num > maxNumberOfKeys){
+                    num = maxNumberOfKeys;
+                }
+                numberOfKeys = num;
+            }
+        });
+
+        builder.setNegativeButton("Cancel", null);
+        builder.create().show();
+
+    }
+
+    public void addBitmapToMemoryCache(Bitmap bitmap){
+        int key = keys.size();
+        if(getBitmapFromMemCache(key) == null){
+            mMemoryCache.put(key, bitmap);
+            keys.add(key);
+        }
+
+        if(keys.size() > numberOfKeys){
+            keys.remove(0);
+            mMemoryCache.remove(0);
+        }
+
+    }
+
+    public Bitmap getBitmapFromMemCache(Integer key){
+        return mMemoryCache.get(key);
+    }
 
 
     //Reference: https://developer.android.com/training/camera/photobasics.html
@@ -196,37 +271,50 @@ public class MainActivity extends AppCompatActivity
                 }).create().show();
     }
 
+    //Gesture Listener
     class MyGestureListener extends GestureDetector.SimpleOnGestureListener{
         private static final String DEBUT_TAG = "Gestures";
+        ImageWarp imageWarp;
 
         public void onLongPress(MotionEvent event){
             //Implement Blur
             Log.d(DEBUT_TAG, "onLongPress:" + event.toString());
-            ImageWarp imageWarp = new ImageWarp(bitMap);
+            addBitmapToMemoryCache(bitMap);
+            imageWarp = new ImageWarp(bitMap);
             bitMap = imageWarp.blur();
             imageView.setImageBitmap(bitMap);
+            imageWarp = null;
         }
 
         public boolean onDoubleTap(MotionEvent event){
-            //Implement Fish Eye
+            //Implement Ripple
             Log.d(DEBUT_TAG, "onDoubleTap:"+event.toString());
-            ImageWarp imageWarp = new ImageWarp(bitMap);
-            bitMap = imageWarp.fisheye(event.getX(), event.getY());
+            imageWarp = new ImageWarp(bitMap);
+            bitMap = imageWarp.ripple();
             imageView.setImageBitmap(bitMap);
+            imageWarp = null;
             return true;
-        }
-
-        public boolean onDown(MotionEvent event){
-            Log.d(DEBUT_TAG, "onDown:"+ event.toString());
-            return true;
-        }
-
-        public void onShowPress(MotionEvent motionEvent){
-            Log.d(DEBUT_TAG, "onShowPress:" + motionEvent.toString());
         }
 
         public boolean onSingleTapUp(MotionEvent event){
-            Log.d(DEBUT_TAG, "onSingleTap:" + event.toString());
+            //Implement Fish Eye
+            Log.d(DEBUT_TAG, "onDoubleTap:"+event.toString());
+            imageWarp = new ImageWarp(bitMap);
+            bitMap = imageWarp.fisheye();
+            imageView.setImageBitmap(bitMap);
+            imageWarp = null;
+            return true;
+        }
+
+
+        public boolean onFling(MotionEvent event, MotionEvent event1, float v, float v1){
+            //Implement Swirl
+            Log.d(DEBUT_TAG, "onFling"+event.toString());
+            addBitmapToMemoryCache(bitMap);
+            imageWarp = new ImageWarp(bitMap);
+            bitMap = imageWarp.swirl();
+            imageView.setImageBitmap(bitMap);
+            imageWarp = null;
             return true;
         }
     }
