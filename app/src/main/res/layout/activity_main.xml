@@ -19,39 +19,6 @@
         android:layout_alignParentStart="true"
         android:id="@+id/imageView"
         android:layout_alignParentEnd="true"
-        android:layout_above="@+id/loadImageButton" />
+        android:layout_alignParentBottom="true" />
 
-    <Button
-        android:text="Take Photo"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:id="@+id/takePhotoButton"
-        android:layout_alignParentBottom="true"
-        android:layout_alignParentEnd="true"
-        android:layout_marginBottom="46dp" />
-
-    <Button
-        android:text="Undo Photo"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:layout_alignParentStart="true"
-        android:id="@+id/undoButton" />
-
-    <Button
-        android:text="Save Photo"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:layout_alignParentEnd="true"
-        android:id="@+id/savePhotoButton" />
-
-    <Button
-        android:text="Load Image"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:id="@+id/loadImageButton"
-        android:layout_above="@+id/undoButton"
-        android:layout_alignEnd="@+id/undoButton"
-        android:layout_alignParentStart="true" />
 </RelativeLayout>

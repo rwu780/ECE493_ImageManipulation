@@ -23,16 +23,12 @@ import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.MotionEvent;
-import android.view.View;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.Toast;
 
 import java.io.File;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.List;
 
 import android.Manifest;
 
@@ -50,13 +46,7 @@ public class MainActivity extends AppCompatActivity
     ImageView imageView;
     Bitmap bitMap = null;
 
-    private int maxNumberOfKeys = 10;
-    private int numberOfKeys = 5;
-
-
     private static final String TAG = "Main";
-
-    List<int[]> bitmapList;
 
     File photoFile;
 
@@ -72,51 +62,10 @@ public class MainActivity extends AppCompatActivity
             }
         }
 
-        //Create Bitmap Cache
-        final int maxMemory = (int) (Runtime.getRuntime().maxMemory() / 1024);
-        final int cacheSize = maxMemory / 8;
-
         //Load Gestures
         mDetector = new GestureDetectorCompat(this, new MyGestureListener());
         imgUtil = new ImageUtility();
         imageView = (ImageView) findViewById(R.id.imageView);
-        bitmapList = new ArrayList<int[]>();
-
-        //Load Photo Button
-        Button loadImageButton = (Button) findViewById(R.id.loadImageButton);
-        loadImageButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent mediaScanIntent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.INTERNAL_CONTENT_URI);
-                startActivityForResult(mediaScanIntent, RESULT_LOAD_IMAGE);
-            }
-        });
-
-        //Take Photo
-        Button takePhotoButton = (Button) findViewById(R.id.takePhotoButton);
-        takePhotoButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                dispatchTakePictureIntent();
-            }
-        });
-
-        //Save Photo
-        Button savePhotoButton = (Button) findViewById(R.id.savePhotoButton);
-        savePhotoButton.setOnClickListener(new View.OnClickListener(){
-
-            @Override
-            public void onClick(View v) {
-                if(bitMap != null) {
-                    imgUtil.saveBitmapToGallery(getApplicationContext(), bitMap);
-                    Toast.makeText(getBaseContext(), "Image Saved", Toast.LENGTH_LONG).show();
-                }else {
-                    Toast.makeText(getBaseContext(), "No Image", Toast.LENGTH_LONG).show();
-                }
-
-            }
-        });
-
     }
 
     public boolean onTouchEvent(MotionEvent event){
@@ -137,10 +86,24 @@ public class MainActivity extends AppCompatActivity
         switch (item.getItemId()){
             case R.id.preference:
                 setPreference();
-                Log.d(TAG, "Preference: " + numberOfKeys);
                 return true;
             case R.id.undoItem:
                 undo();
+                return true;
+            case R.id.takePhotoItem:
+                dispatchTakePictureIntent();
+                return true;
+            case R.id.loadImageItem:
+                Intent mediaScanIntent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.INTERNAL_CONTENT_URI);
+                startActivityForResult(mediaScanIntent, RESULT_LOAD_IMAGE);
+                return true;
+            case R.id.saveImageItem:
+                if(bitMap != null) {
+                    imgUtil.saveBitmapToGallery(getApplicationContext(), bitMap);
+                    Toast.makeText(getBaseContext(), "Image Saved", Toast.LENGTH_LONG).show();
+                }else {
+                    Toast.makeText(getBaseContext(), "No Image", Toast.LENGTH_LONG).show();
+                }
                 return true;
             default:
                 return super.onOptionsItemSelected(item);
@@ -150,13 +113,15 @@ public class MainActivity extends AppCompatActivity
     public void addBitmap(Bitmap bmap){
         int[] store = new int[bmap.getByteCount()];
         bmap.getPixels(store, 0, bmap.getWidth(), 0, 0, bmap.getWidth(), bmap.getHeight());
-
-        bitmapList.add(store);
+        imgUtil.addBitMapToCache(store);
     }
     public void undo(){
-        int[] res = bitmapList.get(bitmapList.size() - 1);
+        if(imgUtil.cacheSize() == 0){
+            Toast.makeText(this, "No more undos", Toast.LENGTH_LONG).show();
+            return;
+        }
+        int[] res = imgUtil.getLastBitmap();
         bitMap.setPixels(res, 0, bitMap.getWidth(), 0, 0, bitMap.getWidth(), bitMap.getHeight());
-        bitmapList.remove(bitmapList.size() - 1);
         imageView.setImageBitmap(bitMap);
     }
     public void setPreference(){
@@ -173,17 +138,17 @@ public class MainActivity extends AppCompatActivity
 
             @Override
             public void onClick(DialogInterface dialog, int which) {
-                int num = new Integer(input.getText().toString());
-                if(num > maxNumberOfKeys){
-                    num = maxNumberOfKeys;
+                try{
+                    int num = new Integer(input.getText().toString());
+                    imgUtil.setNumberOfUndos(num);
+                } catch (Exception e){
+                    Toast.makeText(getBaseContext(), "You did not enter a number", Toast.LENGTH_LONG).show();
                 }
-                numberOfKeys = num;
             }
         });
 
         builder.setNegativeButton("Cancel", null);
         builder.create().show();
-
     }
 
     //Reference: https://developer.android.com/training/camera/photobasics.html
@@ -251,8 +216,6 @@ public class MainActivity extends AppCompatActivity
     class MyGestureListener extends GestureDetector.SimpleOnGestureListener{
         private static final String DEBUT_TAG = "Gestures";
 
-        ImageWarp imageWarp;
-
         public void onLongPress(MotionEvent event){
             //Implement Blur
             addBitmap(bitMap);
@@ -260,8 +223,9 @@ public class MainActivity extends AppCompatActivity
             Thread thread = new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    imageWarp = new ImageWarp(bitMap);
+                    ImageWarp imageWarp = new ImageWarp(bitMap);
                     bitMap = imageWarp.blur();
+
                 }
             });
             thread.start();
@@ -270,10 +234,8 @@ public class MainActivity extends AppCompatActivity
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-//            imageWarp = new ImageWarp(bitMap);
-//            bitMap = imageWarp.blur();
             imageView.setImageBitmap(bitMap);
-            imageWarp = null;
+
         }
 
         public boolean onDoubleTap(MotionEvent event){
@@ -283,7 +245,7 @@ public class MainActivity extends AppCompatActivity
             Thread thread = new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    imageWarp = new ImageWarp(bitMap);
+                    ImageWarp imageWarp = new ImageWarp(bitMap);
                     bitMap = imageWarp.ripple();
                 }
             });
@@ -293,10 +255,7 @@ public class MainActivity extends AppCompatActivity
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-//            imageWarp = new ImageWarp(bitMap);
-//            bitMap = imageWarp.ripple();
             imageView.setImageBitmap(bitMap);
-            imageWarp = null;
             return true;
         }
 
@@ -308,7 +267,7 @@ public class MainActivity extends AppCompatActivity
             Thread thread = new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    imageWarp = new ImageWarp(bitMap);
+                    ImageWarp imageWarp = new ImageWarp(bitMap);
                     bitMap = imageWarp.fisheye();
                 }
             });
@@ -318,10 +277,8 @@ public class MainActivity extends AppCompatActivity
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-//            imageWarp = new ImageWarp(bitMap);
-//            bitMap = imageWarp.fisheye();
             imageView.setImageBitmap(bitMap);
-            imageWarp = null;
+
             return true;
         }
 
@@ -330,11 +287,10 @@ public class MainActivity extends AppCompatActivity
             //Implement Swirl
             addBitmap(bitMap);
             Log.d(DEBUT_TAG, "onFling"+event.toString());
-//            addBitmapToMemoryCache(bitMap);
             Thread thread = new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    imageWarp = new ImageWarp(bitMap);
+                    ImageWarp imageWarp = new ImageWarp(bitMap);
                     bitMap = imageWarp.swirl();
                 }
             });
@@ -344,10 +300,7 @@ public class MainActivity extends AppCompatActivity
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-//            imageWarp = new ImageWarp(bitMap);
-//            bitMap = imageWarp.swirl();
             imageView.setImageBitmap(bitMap);
-            imageWarp = null;
             return true;
         }
     }

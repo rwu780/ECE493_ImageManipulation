@@ -24,6 +24,42 @@ import java.util.List;
 
 public class ImageUtility {
 
+    private List<int[]> bitmapList;
+    private final int maxNumber = 10; // Maximum number of undos is 10
+    private int numberOfUndos = 3;
+
+    public ImageUtility(){
+        bitmapList = new ArrayList<int[]>();
+    }
+
+    public void addBitMapToCache(int[] pixels){
+        bitmapList.add(pixels);
+
+        if(cacheSize() > numberOfUndos){
+            bitmapList.remove(0);
+        }
+    }
+
+    public int cacheSize(){
+        return bitmapList.size();
+    }
+
+    public int[] getLastBitmap(){
+        int lastIndex = cacheSize() - 1;
+        int[] bm = bitmapList.get(lastIndex);
+        bitmapList.remove(lastIndex);
+        return bm;
+    }
+
+    public void setNumberOfUndos(int x){
+        if(x > maxNumber){
+            numberOfUndos = maxNumber;
+        }
+        else{
+            numberOfUndos = x;
+        }
+    }
+
     public File createFile(){
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
         String imageFileName = "JPEG_" + timeStamp + "_";

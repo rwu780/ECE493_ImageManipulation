@@ -7,7 +7,13 @@
     <item android:title="Undo"
         android:id="@+id/undoItem"
         />
-    <item android:id="@+id/saveImage"
+    <item android:id="@+id/saveImageItem"
         android:title="Save Image"
+        />
+    <item android:id="@+id/loadImageItem"
+        android:title="Load Image"
+        />
+    <item android:id="@+id/takePhotoItem"
+        android:title="Take Photo"
         />
 </menu>
